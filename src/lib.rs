@@ -27,7 +27,7 @@ impl<'a, TLVType: From<u8> + Into<u8> + Copy> Read for TLV<'a, TLVType> {
         if data.len() < tlv_length.into() {
             return Err(ParserError::TooLittleData(tlv_length as usize - data.len()));
         }
-        let tlv_data = data.collect();
+        let tlv_data = data.take(tlv_length as usize).collect();
         Ok(Self { tlv_type, tlv_data })
     }
 }
