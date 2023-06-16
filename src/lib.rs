@@ -14,6 +14,16 @@ pub struct TLV<'a, TLVType: From<u8> + Into<u8> + Copy> {
 
     pub tlv_data: Cow<'a, [u8]>,
 }
+impl<TLVType: From<u8> + Into<u8> + Copy> TLV<'_, TLVType> {
+    pub fn iter(&self) -> impl Iterator<Item = u8> + '_ {
+        core::iter::once(self.tlv_type.into()).chain(
+            (self.tlv_data.len() as u16)
+                .to_le_bytes()
+                .into_iter()
+                .chain(self.tlv_data.iter().copied()),
+        )
+    }
+}
 #[cfg(feature = "read")]
 impl<'a, TLVType: From<u8> + Into<u8> + Copy> Read for TLV<'a, TLVType> {
     fn from_bytes(data: &mut impl ExactSizeIterator<Item = u8>) -> Result<Self, ParserError> {
