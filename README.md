@@ -1,5 +1,8 @@
 # tlv-rs
-A minimal parser for SIMPLE TLVs.
+A minimal parser for simple TLVs.
+Type Length Value.
+https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value
+
 ## no_std
 This crate only requires the `alloc` crate.
 ## performance
