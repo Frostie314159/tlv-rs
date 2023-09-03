@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use alloc::borrow::Cow;
-use bin_utils::*;
+use bin_utils::{Read, ParserError, Endian, Write, ReadCtx, WriteCtx};
 
 #[cfg_attr(feature = "debug", derive(Debug))]
 #[derive(Clone, PartialEq, Eq)]
