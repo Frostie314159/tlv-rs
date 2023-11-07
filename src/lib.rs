@@ -1,35 +1,34 @@
 #![no_std]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
+#![forbid(unsafe_code)]
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 use core::marker::PhantomData;
+pub use scroll;
 
-use alloc::{vec, vec::Vec};
-use bin_utils::*;
-use try_take::try_take;
-pub trait RW:
-    for<'a> ReadCtx<&'a Endian>
-    + for<'a> WriteFixedCtx<{ core::mem::size_of::<Self>() }, &'a Endian>
-    + Copy
+use scroll::{
+    ctx::{MeasureWith, TryFromCtx, TryIntoCtx},
+    Endian, Pread, Pwrite,
+};
+pub trait RW<'a>:
+    TryFromCtx<'a, scroll::Endian, Error = scroll::Error>
+    + TryIntoCtx<scroll::Endian, Error = scroll::Error>
     + Default
-where
-    [(); core::mem::size_of::<Self>()]:,
+    + Copy
 {
 }
-impl<T> RW for T
-where
-    [(); core::mem::size_of::<Self>()]:,
-    T: for<'a> ReadCtx<&'a Endian>
-        + for<'a> WriteFixedCtx<{ core::mem::size_of::<Self>() }, &'a Endian>
-        + Copy
-        + Default,
+impl<
+        'a,
+        T: TryFromCtx<'a, scroll::Endian, Error = scroll::Error>
+            + TryIntoCtx<scroll::Endian, Error = scroll::Error>
+            + Default
+            + Copy,
+    > RW<'a> for T
 {
 }
 
-#[cfg_attr(feature = "debug", derive(Debug))]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// A TLV.
 ///
 /// This has to be constructed with `..Default::default()` as internally there exists a [PhantomData].
@@ -39,151 +38,178 @@ where
 /// The last parameter is a constant boolean, which describes if the fields should be encoded using big endian.
 ///
 /// ```
-/// #![feature(more_qualified_paths)]
-/// use bin_utils::{enum_to_int, Read, Write};
-/// use tlv_rs::TLV;
-///
-/// #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
-/// enum TLVType {
-///     #[default]
-///     Three,
-///     Unknown(u8),
+/// use tlv_rs::{TLV, scroll::{Pread, Pwrite}};
+/// use macro_bits::serializable_enum;
+/// serializable_enum! {
+///     #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+///     pub enum TLVType: u8 {
+///         #[default]
+///         Three => 0x3
+///     }
 /// }
-/// enum_to_int! {
-///     u8,
+/// type OurTLV<'a> = TLV<'a, u8, TLVType, u16>;
 ///
-///     TLVType,
-///     
-///     0x03,
-///     TLVType::Three
-/// }
-/// type OurTLV = TLV<u8, TLVType, u16, false>;
+/// let bytes = [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55].as_slice();
 ///
-/// let bytes = [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
-///
-/// let tlv = OurTLV::from_bytes(&mut bytes.iter().copied()).unwrap();
+/// let tlv = bytes.pread::<OurTLV>(0).unwrap();
 /// assert_eq!(
 ///     tlv,
 ///     TLV {
 ///         tlv_type: TLVType::Three,
-///         tlv_data: [0x11, 0x22, 0x33, 0x44, 0x55].to_vec(),
+///         tlv_data: [0x11, 0x22, 0x33, 0x44, 0x55].as_slice(),
 ///         ..Default::default()
 ///     }
 /// );
-/// assert_eq!(tlv.to_bytes(), bytes);
+/// let mut buf = [0x00; 8];
+/// buf.pwrite(tlv, 0).unwrap();
+/// assert_eq!(buf, bytes);
 /// ```
 pub struct TLV<
-    RawTLVType: RW + From<TLVType>,
-    TLVType: Copy,
-    TLVLength: RW + TryFrom<usize> + Into<usize>,
-    const BIG_ENDIAN: bool,
-> where
-    [(); core::mem::size_of::<RawTLVType>()]:,
-    [(); core::mem::size_of::<TLVType>()]:,
-    [(); core::mem::size_of::<TLVLength>()]:,
-{
+    'a,
+    RawTLVType: RW<'a> + From<TLVType>,
+    TLVType: From<RawTLVType> + Default + Copy,
+    TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+> {
     pub tlv_type: TLVType,
 
     #[doc(hidden)]
-    pub _tlv_length: PhantomData<(RawTLVType, TLVLength)>, // Already encoded in the vector.
+    pub _phantom: PhantomData<(RawTLVType, TLVLength)>, // Already encoded in slice.
 
-    pub tlv_data: Vec<u8>,
+    pub data: &'a [u8],
 }
 impl<
-        RawTLVType: RW + From<TLVType>,
-        TLVType: Copy,
-        TLVLength: RW + TryFrom<usize> + Into<usize>,
-        const BIG_ENDIAN: bool,
-    > TLV<RawTLVType, TLVType, TLVLength, BIG_ENDIAN>
-where
-    [(); core::mem::size_of::<RawTLVType>()]:,
-    [(); core::mem::size_of::<TLVType>()]:,
-    [(); core::mem::size_of::<TLVLength>()]:,
+        'a,
+        RawTLVType: RW<'a> + From<TLVType>,
+        TLVType: From<RawTLVType> + Default + 'a + Copy,
+        TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+    > TLV<'a, RawTLVType, TLVType, TLVLength>
 {
-    const HEADER_LENGTH: usize =
-        core::mem::size_of::<RawTLVType>() + core::mem::size_of::<TLVLength>();
-
-    pub fn iter(&self) -> impl Iterator<Item = u8> + '_ {
-        RawTLVType::from(self.tlv_type)
-            .to_bytes(&Self::get_endian())
-            .into_iter()
-            .chain(
-                <TLVLength as TryFrom<usize>>::try_from(self.tlv_data.len())
-                    .map_err(|_| ())
-                    .expect("Data length exceeded upper limit of length type.")
-                    .to_bytes(&Self::get_endian()),
-            )
-            .chain(self.tlv_data.iter().copied())
+    /// Wrapper around scroll Pread.
+    pub fn from_bytes(bytes: &'a [u8], big_endian: bool) -> Result<Self, scroll::Error> {
+        bytes.pread_with(
+            0,
+            if big_endian {
+                Endian::Big
+            } else {
+                Endian::Little
+            },
+        )
     }
-    pub(crate) const fn get_endian() -> Endian {
-        if BIG_ENDIAN {
-            Endian::Big
-        } else {
-            Endian::Little
-        }
+    /// Returns the length of header plus body.
+    pub fn size_in_bytes(&self) -> usize {
+        self.measure_with(&())
     }
-}
-#[cfg(feature = "read")]
-impl<
-        RawTLVType: RW + From<TLVType>,
-        TLVType: Copy + From<RawTLVType> + Default,
-        TLVLength: RW + TryFrom<usize> + Into<usize>,
-        const BIG_ENDIAN: bool,
-    > Read for TLV<RawTLVType, TLVType, TLVLength, BIG_ENDIAN>
-where
-    [(); core::mem::size_of::<RawTLVType>()]:,
-    [(); core::mem::size_of::<TLVType>()]:,
-    [(); core::mem::size_of::<TLVLength>()]:,
-{
-    fn from_bytes(data: &mut impl ExactSizeIterator<Item = u8>) -> Result<Self, ParserError> {
-        let mut header = try_take(data, Self::HEADER_LENGTH).map_err(ParserError::TooLittleData)?;
-
-        let tlv_type = TLVType::from(RawTLVType::from_bytes(&mut header, &Self::get_endian())?);
-        let tlv_length = TLVLength::from_bytes(&mut header, &Self::get_endian())?;
-
-        let tlv_data = try_take(data, tlv_length.into())
-            .map_err(ParserError::TooLittleData)?
-            .collect();
-
-        Ok(Self {
-            tlv_type,
-            tlv_data,
-            ..Default::default()
-        })
+    /// Serialize into the buffer.
+    pub fn to_bytes(&'a self, buf: &mut [u8], big_endian: bool) -> Result<usize, scroll::Error> {
+        buf.pwrite_with(
+            self,
+            0,
+            if big_endian {
+                Endian::Big
+            } else {
+                Endian::Little
+            },
+        )
     }
-}
-#[cfg(feature = "write")]
-impl<
-        RawTLVType: RW + From<TLVType>,
-        TLVType: Copy,
-        TLVLength: RW + TryFrom<usize> + Into<usize>,
-        const BIG_ENDIAN: bool,
-    > Write for TLV<RawTLVType, TLVType, TLVLength, BIG_ENDIAN>
-where
-    [(); core::mem::size_of::<RawTLVType>()]:,
-    [(); core::mem::size_of::<TLVType>()]:,
-    [(); core::mem::size_of::<TLVLength>()]:,
-{
-    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
-        self.iter().collect()
+    /// Serialize into a [heapless::Vec].
+    pub fn to_bytes_capped<const N: usize>(
+        &'a self,
+        big_endian: bool,
+    ) -> Result<heapless::Vec<u8, N>, scroll::Error> {
+        let mut buf = [0x00; N];
+        self.to_bytes(&mut buf, big_endian)?;
+        Ok(heapless::Vec::<u8, N>::from_slice(&buf).unwrap())
+    }
+    #[cfg(feature = "alloc")]
+    // NOTE: This isn't checked, for being panic free, since allocations can panic.
+    /// Write the bytes to a [Vec](alloc::vec::Vec).
+    ///
+    /// This only reserves exactly as many bytes as needed.
+    pub fn to_bytes_dynamic(
+        &'a self,
+        big_endian: bool,
+    ) -> Result<alloc::vec::Vec<u8>, scroll::Error> {
+        let mut buf = alloc::vec::Vec::new();
+        buf.reserve_exact(self.size_in_bytes());
+
+        self.to_bytes(buf.as_mut_slice(), big_endian)?;
+        Ok(buf)
     }
 }
 impl<
-        RawTLVType: RW + From<TLVType>,
-        TLVType: Copy + Default,
-        TLVLength: RW + TryFrom<usize> + Into<usize> + Default,
-        const BIG_ENDIAN: bool,
-    > Default for TLV<RawTLVType, TLVType, TLVLength, BIG_ENDIAN>
-where
-    [(); core::mem::size_of::<RawTLVType>()]:,
-    [(); core::mem::size_of::<TLVType>()]:,
-    [(); core::mem::size_of::<TLVLength>()]:,
+        'a,
+        RawTLVType: RW<'a> + From<TLVType>,
+        TLVType: From<RawTLVType> + Default + 'a + Copy,
+        TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+    > TryFromCtx<'a, Endian> for TLV<'a, RawTLVType, TLVType, TLVLength>
 {
-    fn default() -> Self {
-        Self {
-            tlv_type: TLVType::default(),
-            _tlv_length: PhantomData::default(),
-            tlv_data: vec![],
-        }
+    type Error = scroll::Error;
+    fn try_from_ctx(from: &'a [u8], ctx: Endian) -> Result<(Self, usize), Self::Error>
+    where
+        <RawTLVType as TryFromCtx<'a, Endian>>::Error: From<scroll::Error>,
+    {
+        let mut offset = 0;
+
+        let tlv_type: TLVType = from.gread_with::<RawTLVType>(&mut offset, ctx)?.into();
+        let tlv_length: TLVLength = from.gread_with(&mut offset, ctx)?;
+        let tlv_data = from.gread_with(&mut offset, tlv_length.into())?;
+        Ok((
+            Self {
+                tlv_type,
+                data: tlv_data,
+                ..Default::default()
+            },
+            offset,
+        ))
+    }
+}
+impl<
+        'a,
+        RawTLVType: RW<'a> + From<TLVType>,
+        TLVType: From<RawTLVType> + Default + 'a + Copy,
+        TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+    > TryIntoCtx<Endian> for TLV<'a, RawTLVType, TLVType, TLVLength>
+{
+    type Error = scroll::Error;
+    fn try_into_ctx(self, from: &mut [u8], ctx: Endian) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+
+        from.gwrite_with::<RawTLVType>(self.tlv_type.into(), &mut offset, ctx)?;
+        from.gwrite_with::<TLVLength>(
+            self.data
+                .len()
+                .try_into()
+                .map_err(|_| scroll::Error::TooBig {
+                    size: 0x00,
+                    len: self.data.len(),
+                })?,
+            &mut offset,
+            ctx,
+        )?;
+        from.gwrite(self.data, &mut offset)?;
+        Ok(offset)
+    }
+}
+impl<
+        'a,
+        RawTLVType: RW<'a> + From<TLVType>,
+        TLVType: From<RawTLVType> + Default + 'a + Copy,
+        TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+    > TryIntoCtx<Endian> for &'a TLV<'a, RawTLVType, TLVType, TLVLength>
+{
+    type Error = scroll::Error;
+    fn try_into_ctx(self, from: &mut [u8], ctx: Endian) -> Result<usize, Self::Error> {
+        (*self).try_into_ctx(from, ctx)
+    }
+}
+impl<
+        'a,
+        RawTLVType: RW<'a> + From<TLVType>,
+        TLVType: From<RawTLVType> + Default + 'a + Copy,
+        TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+    > MeasureWith<()> for TLV<'a, RawTLVType, TLVType, TLVLength>
+{
+    fn measure_with(&self, _ctx: &()) -> usize {
+        ::core::mem::size_of::<(RawTLVType, TLVLength)>() + self.data.len()
     }
 }
