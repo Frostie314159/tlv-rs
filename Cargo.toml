@@ -25,7 +25,3 @@ no_panic = []
 [[bench]]
 name = "tlv_rs"
 harness = false
-
-[[example]]
-name = "no_panic"
-required_features = ["no_panic"]
