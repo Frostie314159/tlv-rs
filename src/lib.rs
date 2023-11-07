@@ -56,7 +56,7 @@ impl<
 ///     tlv,
 ///     TLV {
 ///         tlv_type: TLVType::Three,
-///         tlv_data: [0x11, 0x22, 0x33, 0x44, 0x55].as_slice(),
+///         data: [0x11, 0x22, 0x33, 0x44, 0x55].as_slice(),
 ///         ..Default::default()
 ///     }
 /// );
