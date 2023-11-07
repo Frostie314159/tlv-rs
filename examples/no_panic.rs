@@ -1,8 +1,8 @@
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, feature = "no_panic"))]
 fn main() {
     compile_error!("Example must be run in release mode");
 }
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), feature = "no_panic"))]
 #[no_panic::no_panic]
 fn main() {
     use tlv_rs::TLV;
@@ -15,3 +15,5 @@ fn main() {
     let _ = test_tlv.to_bytes(&mut buf, false);
     let _ = test_tlv.to_bytes_capped::<3>(false);
 }
+#[cfg(all(debug_assertions, not(feature = "no_panic")))]
+fn main() {}
