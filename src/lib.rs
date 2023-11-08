@@ -5,7 +5,6 @@
 extern crate alloc;
 
 use core::marker::PhantomData;
-pub use scroll;
 
 use scroll::{
     ctx::{MeasureWith, TryFromCtx, TryIntoCtx},
