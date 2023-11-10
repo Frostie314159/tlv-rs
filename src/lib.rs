@@ -37,7 +37,7 @@ impl<
 /// The last parameter is a constant boolean, which describes if the fields should be encoded using big endian.
 ///
 /// ```
-/// use tlv_rs::{TLV, scroll::{Pread, Pwrite}};
+/// use tlv_rs::TLV;
 /// use macro_bits::serializable_enum;
 /// serializable_enum! {
 ///     #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -48,9 +48,9 @@ impl<
 /// }
 /// type OurTLV<'a> = TLV<'a, u8, TLVType, u16>;
 ///
-/// let bytes = [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55].as_slice();
+/// let bytes = [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66].as_slice();
 ///
-/// let tlv = bytes.pread::<OurTLV>(0).unwrap();
+/// let tlv = OurTLV::from_bytes(bytes, false).unwrap();
 /// assert_eq!(
 ///     tlv,
 ///     TLV {
@@ -60,8 +60,8 @@ impl<
 ///     }
 /// );
 /// let mut buf = [0x00; 8];
-/// buf.pwrite(tlv, 0).unwrap();
-/// assert_eq!(buf, bytes);
+/// tlv.to_bytes(&mut buf, false).unwrap();
+/// assert_eq!(buf, [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55].as_slice());
 /// ```
 pub struct TLV<
     'a,
