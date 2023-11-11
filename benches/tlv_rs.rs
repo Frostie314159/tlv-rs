@@ -15,7 +15,7 @@ fn criterion_bench(c: &mut Criterion) {
     let mut buf = [0x00; 8];
     c.bench_function("write_tlv", |b| {
         b.iter(|| {
-            let _ = tlv.to_bytes(black_box(&mut buf), false).unwrap();
+            let _ = tlv.clone().into_bytes(black_box(&mut buf), false).unwrap();
         })
     });
 }

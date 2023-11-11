@@ -1,7 +1,7 @@
 # tlv-rs
 A minimal parser for SIMPLE TLVs.
 ## no_std
-This crate doesn't require allocations, but an optional utility function can be used, which is made available through the `alloc` feature.
+This crate requires allocations, because of the `Cow` type.
 ## Performance
 On my 12th Gen Intel 1240p Framework laptop the following speeds were achieved.
 -- | ns/iter

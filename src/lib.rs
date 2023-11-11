@@ -1,11 +1,11 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
-#[cfg(feature = "alloc")]
 extern crate alloc;
 
 use core::marker::PhantomData;
 
+use alloc::borrow::Cow;
 use scroll::{
     ctx::{MeasureWith, TryFromCtx, TryIntoCtx},
     Endian, Pread, Pwrite,
@@ -27,7 +27,7 @@ impl<
 {
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// A TLV.
 ///
 /// This has to be constructed with `..Default::default()` as internally there exists a [PhantomData].
@@ -55,12 +55,12 @@ impl<
 ///     tlv,
 ///     TLV {
 ///         tlv_type: TLVType::Three,
-///         data: [0x11, 0x22, 0x33, 0x44, 0x55].as_slice(),
+///         data: [0x11, 0x22, 0x33, 0x44, 0x55].as_slice().into(),
 ///         ..Default::default()
 ///     }
 /// );
 /// let mut buf = [0x00; 8];
-/// tlv.to_bytes(&mut buf, false).unwrap();
+/// tlv.into_bytes(&mut buf, false).unwrap();
 /// assert_eq!(buf, [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55].as_slice());
 /// ```
 pub struct TLV<
@@ -74,7 +74,7 @@ pub struct TLV<
     #[doc(hidden)]
     pub _phantom: PhantomData<(RawTLVType, TLVLength)>, // Already encoded in slice.
 
-    pub data: &'a [u8],
+    pub data: Cow<'a, [u8]>,
 }
 impl<
         'a,
@@ -94,12 +94,8 @@ impl<
             },
         )
     }
-    /// Returns the length of header plus body.
-    pub fn size_in_bytes(&self) -> usize {
-        self.measure_with(&())
-    }
     /// Serialize into the buffer.
-    pub fn to_bytes(&'a self, buf: &mut [u8], big_endian: bool) -> Result<usize, scroll::Error> {
+    pub fn into_bytes(self, buf: &mut [u8], big_endian: bool) -> Result<usize, scroll::Error> {
         buf.pwrite_with(
             self,
             0,
@@ -111,15 +107,14 @@ impl<
         )
     }
     /// Serialize into a [heapless::Vec].
-    pub fn to_bytes_capped<const N: usize>(
-        &'a self,
+    pub fn into_bytes_capped<const N: usize>(
+        self,
         big_endian: bool,
     ) -> Result<heapless::Vec<u8, N>, scroll::Error> {
         let mut buf = [0x00; N];
-        self.to_bytes(&mut buf, big_endian)?;
+        self.into_bytes(&mut buf, big_endian)?;
         Ok(heapless::Vec::<u8, N>::from_slice(&buf).unwrap())
     }
-    #[cfg(feature = "alloc")]
     // NOTE: This isn't checked, for being panic free, since allocations can panic.
     /// Write the bytes to a [Vec](alloc::vec::Vec).
     ///
@@ -129,9 +124,9 @@ impl<
         big_endian: bool,
     ) -> Result<alloc::vec::Vec<u8>, scroll::Error> {
         let mut buf = alloc::vec::Vec::new();
-        buf.reserve_exact(self.size_in_bytes());
+        buf.reserve_exact(self.measure_with(&()));
 
-        self.to_bytes(buf.as_mut_slice(), big_endian)?;
+        self.clone().into_bytes(buf.as_mut_slice(), big_endian)?;
         Ok(buf)
     }
 }
@@ -151,7 +146,7 @@ impl<
 
         let tlv_type: TLVType = from.gread_with::<RawTLVType>(&mut offset, ctx)?.into();
         let tlv_length: TLVLength = from.gread_with(&mut offset, ctx)?;
-        let tlv_data = from.gread_with(&mut offset, tlv_length.into())?;
+        let tlv_data = Cow::Borrowed(from.gread_with(&mut offset, tlv_length.into())?);
         Ok((
             Self {
                 tlv_type,
@@ -185,20 +180,8 @@ impl<
             &mut offset,
             ctx,
         )?;
-        from.gwrite(self.data, &mut offset)?;
+        from.gwrite::<&[u8]>(&self.data, &mut offset)?;
         Ok(offset)
-    }
-}
-impl<
-        'a,
-        RawTLVType: RW<'a> + From<TLVType>,
-        TLVType: From<RawTLVType> + Default + 'a + Copy,
-        TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
-    > TryIntoCtx<Endian> for &'a TLV<'a, RawTLVType, TLVType, TLVLength>
-{
-    type Error = scroll::Error;
-    fn try_into_ctx(self, from: &mut [u8], ctx: Endian) -> Result<usize, Self::Error> {
-        (*self).try_into_ctx(from, ctx)
     }
 }
 impl<
