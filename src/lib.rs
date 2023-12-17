@@ -192,6 +192,6 @@ impl<
     > MeasureWith<()> for TLV<'a, RawTLVType, TLVType, TLVLength>
 {
     fn measure_with(&self, _ctx: &()) -> usize {
-        ::core::mem::size_of::<(RawTLVType, TLVLength)>() + self.data.len()
+        ::core::mem::size_of::<RawTLVType>() + ::core::mem::size_of::<TLVLength>() + self.data.len()
     }
 }
