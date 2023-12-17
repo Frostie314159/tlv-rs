@@ -12,8 +12,8 @@ fn main() {
     let bytes = [0x00, 0x01, 0x00];
     let test_tlv = TestTLV::from_bytes(&bytes, false).unwrap();
     let mut buf = [0x00; 3];
-    let _ = test_tlv.to_bytes(&mut buf, false);
-    let _ = test_tlv.to_bytes_capped::<3>(false);
+    let _ = test_tlv.clone().into_bytes(&mut buf, false);
+    let _ = test_tlv.into_bytes_capped::<3>(false);
 }
 #[cfg(all(debug_assertions, not(feature = "no_panic")))]
 fn main() {}
