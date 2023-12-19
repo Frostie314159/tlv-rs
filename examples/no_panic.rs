@@ -7,7 +7,7 @@ fn main() {
 fn main() {
     use tlv_rs::TLV;
 
-    type TestTLV<'a> = TLV<'a, u8, u8, u8>; 
+    type TestTLV<'a> = TLV<'a, u8, u8, u8, &'a [u8]>; 
 
     let bytes = [0x00, 0x01, 0x00];
     let test_tlv = TestTLV::from_bytes(&bytes, false).unwrap();
