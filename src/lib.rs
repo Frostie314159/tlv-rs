@@ -1,11 +1,11 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
-extern crate alloc;
-
 use core::marker::PhantomData;
 
-use alloc::borrow::Cow;
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 use scroll::{
     ctx::{MeasureWith, TryFromCtx, TryIntoCtx},
     Endian, Pread, Pwrite,
@@ -74,7 +74,7 @@ pub struct TLV<
     #[doc(hidden)]
     pub _phantom: PhantomData<(RawTLVType, TLVLength)>, // Already encoded in slice.
 
-    pub data: Cow<'a, [u8]>,
+    pub data: &'a [u8],
 }
 impl<
         'a,
@@ -115,6 +115,8 @@ impl<
         self.into_bytes(&mut buf, big_endian)?;
         Ok(heapless::Vec::<u8, N>::from_slice(&buf).unwrap())
     }
+
+    #[cfg(feature = "alloc")]
     // NOTE: This isn't checked, for being panic free, since allocations can panic.
     /// Write the bytes to a [Vec](alloc::vec::Vec).
     ///
@@ -146,11 +148,11 @@ impl<
 
         let tlv_type: TLVType = from.gread_with::<RawTLVType>(&mut offset, ctx)?.into();
         let tlv_length: TLVLength = from.gread_with(&mut offset, ctx)?;
-        let tlv_data = Cow::Borrowed(from.gread_with(&mut offset, tlv_length.into())?);
+        let data = from.gread_with(&mut offset, tlv_length.into())?;
         Ok((
             Self {
                 tlv_type,
-                data: tlv_data,
+                data,
                 ..Default::default()
             },
             offset,

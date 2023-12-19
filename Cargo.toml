@@ -20,6 +20,7 @@ macro-bits = "0.1.4"
 
 [features]
 no_panic = []
+alloc = []
 
 [[bench]]
 name = "tlv_rs"
