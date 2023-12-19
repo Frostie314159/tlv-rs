@@ -2,7 +2,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tlv_rs::TLV;
 
-type OurTLV<'a> = TLV<'a, u8, u8, u16>;
+type OurTLV<'a> = TLV<'a, u8, u8, u16, &'a [u8]>;
 
 fn criterion_bench(c: &mut Criterion) {
     let bytes: &[u8] = [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55].as_slice();

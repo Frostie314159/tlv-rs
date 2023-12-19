@@ -46,7 +46,7 @@ impl<
 ///         Three => 0x3
 ///     }
 /// }
-/// type OurTLV<'a> = TLV<'a, u8, TLVType, u16>;
+/// type OurTLV<'a> = TLV<'a, u8, TLVType, u16, &'a [u8]>;
 ///
 /// let bytes = [0x03, 0x05, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66].as_slice();
 ///
@@ -68,20 +68,22 @@ pub struct TLV<
     RawTLVType: RW<'a> + From<TLVType>,
     TLVType: From<RawTLVType> + Default + Copy,
     TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
+    Payload: TryFromCtx<'a, usize> + TryIntoCtx + MeasureWith<()>
 > {
     pub tlv_type: TLVType,
 
     #[doc(hidden)]
-    pub _phantom: PhantomData<(RawTLVType, TLVLength)>, // Already encoded in slice.
+    pub _phantom: PhantomData<(RawTLVType, TLVLength, &'a ())>, // Already encoded in slice.
 
-    pub data: &'a [u8],
+    pub data: Payload,
 }
 impl<
         'a,
         RawTLVType: RW<'a> + From<TLVType>,
         TLVType: From<RawTLVType> + Default + 'a + Copy,
         TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
-    > TLV<'a, RawTLVType, TLVType, TLVLength>
+        Payload: TryFromCtx<'a, usize, Error = scroll::Error> + TryIntoCtx<Error = scroll::Error> + MeasureWith<()> + Default
+    > TLV<'a, RawTLVType, TLVType, TLVLength, Payload>
 {
     /// Wrapper around scroll Pread.
     pub fn from_bytes(bytes: &'a [u8], big_endian: bool) -> Result<Self, scroll::Error> {
@@ -137,7 +139,8 @@ impl<
         RawTLVType: RW<'a> + From<TLVType>,
         TLVType: From<RawTLVType> + Default + 'a + Copy,
         TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
-    > TryFromCtx<'a, Endian> for TLV<'a, RawTLVType, TLVType, TLVLength>
+        Payload: TryFromCtx<'a, usize, Error = scroll::Error> + TryIntoCtx + MeasureWith<()> + Default
+    > TryFromCtx<'a, Endian> for TLV<'a, RawTLVType, TLVType, TLVLength, Payload>
 {
     type Error = scroll::Error;
     fn try_from_ctx(from: &'a [u8], ctx: Endian) -> Result<(Self, usize), Self::Error>
@@ -164,7 +167,8 @@ impl<
         RawTLVType: RW<'a> + From<TLVType>,
         TLVType: From<RawTLVType> + Default + 'a + Copy,
         TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
-    > TryIntoCtx<Endian> for TLV<'a, RawTLVType, TLVType, TLVLength>
+        Payload: TryFromCtx<'a, usize> + TryIntoCtx<Error = scroll::Error> + MeasureWith<()> + Default
+    > TryIntoCtx<Endian> for TLV<'a, RawTLVType, TLVType, TLVLength, Payload>
 {
     type Error = scroll::Error;
     fn try_into_ctx(self, from: &mut [u8], ctx: Endian) -> Result<usize, Self::Error> {
@@ -173,16 +177,16 @@ impl<
         from.gwrite_with::<RawTLVType>(self.tlv_type.into(), &mut offset, ctx)?;
         from.gwrite_with::<TLVLength>(
             self.data
-                .len()
+                .measure_with(&())
                 .try_into()
                 .map_err(|_| scroll::Error::TooBig {
                     size: 0x00,
-                    len: self.data.len(),
+                    len: self.data.measure_with(&()),
                 })?,
             &mut offset,
             ctx,
         )?;
-        from.gwrite::<&[u8]>(&self.data, &mut offset)?;
+        from.gwrite(self.data, &mut offset)?;
         Ok(offset)
     }
 }
@@ -191,9 +195,10 @@ impl<
         RawTLVType: RW<'a> + From<TLVType>,
         TLVType: From<RawTLVType> + Default + 'a + Copy,
         TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
-    > MeasureWith<()> for TLV<'a, RawTLVType, TLVType, TLVLength>
+        Payload: TryFromCtx<'a, usize> + TryIntoCtx + MeasureWith<()>
+    > MeasureWith<()> for TLV<'a, RawTLVType, TLVType, TLVLength, Payload>
 {
     fn measure_with(&self, _ctx: &()) -> usize {
-        ::core::mem::size_of::<RawTLVType>() + ::core::mem::size_of::<TLVLength>() + self.data.len()
+        ::core::mem::size_of::<RawTLVType>() + ::core::mem::size_of::<TLVLength>() + self.data.measure_with(&())
     }
 }
