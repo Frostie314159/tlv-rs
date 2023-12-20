@@ -139,7 +139,7 @@ impl<
         RawTLVType: RW<'a> + From<TLVType>,
         TLVType: From<RawTLVType> + Default + 'a + Copy,
         TLVLength: RW<'a> + TryFrom<usize> + Into<usize>,
-        Payload: TryFromCtx<'a, usize, Error = scroll::Error> + TryIntoCtx + MeasureWith<()> + Default
+        Payload: TryFromCtx<'a, usize, Error = scroll::Error> + TryIntoCtx + MeasureWith<()>
     > TryFromCtx<'a, Endian> for TLV<'a, RawTLVType, TLVType, TLVLength, Payload>
 {
     type Error = scroll::Error;
@@ -156,7 +156,7 @@ impl<
             Self {
                 tlv_type,
                 data,
-                ..Default::default()
+                _phantom: PhantomData
             },
             offset,
         ))
