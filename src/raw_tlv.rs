@@ -5,7 +5,7 @@ use scroll::{
     Endian, Pread, Pwrite,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RawTLV<'a, Type, Length> {
     pub tlv_type: Type,
     pub slice: &'a [u8],
