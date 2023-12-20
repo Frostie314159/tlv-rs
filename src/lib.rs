@@ -38,9 +38,7 @@ impl<
             + TryInto<usize>
             + TryFrom<usize>,
         EncodedType: 'a + From<Type>,
-        Payload: TryFromCtx<'a, Error = scroll::Error>
-            + TryIntoCtx<Endian, Error = scroll::Error>
-            + MeasureWith<()>,
+        Payload: TryFromCtx<'a, Error = scroll::Error> + TryIntoCtx<Error = scroll::Error> + MeasureWith<()>,
     > TLV<Type, Length, EncodedType, Payload>
 {
     /// Wrapper around scroll Pread.
@@ -125,7 +123,7 @@ impl<
         Type: TryIntoCtx<Endian, Error = scroll::Error>,
         Length: TryIntoCtx<Endian, Error = scroll::Error> + TryFrom<usize>,
         EncodedType: Into<Type>,
-        Payload: TryIntoCtx<Endian, Error = scroll::Error> + MeasureWith<()>,
+        Payload: TryIntoCtx<Error = scroll::Error> + MeasureWith<()>,
     > TryIntoCtx<Endian> for TLV<Type, Length, EncodedType, Payload>
 {
     type Error = scroll::Error;
