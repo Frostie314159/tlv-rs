@@ -5,8 +5,8 @@ fn main() {
 #[cfg(all(not(debug_assertions), feature = "no_panic"))]
 #[no_panic::no_panic]
 fn main() {
-    use tlv_rs::raw_tlv::RawTLV;
     use scroll::{Pread, Pwrite};
+    use tlv_rs::raw_tlv::RawTLV;
 
     type TestTLV<'a> = RawTLV<'a, u8, u8>;
 
