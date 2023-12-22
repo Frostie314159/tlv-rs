@@ -1,4 +1,3 @@
-#![feature(more_qualified_paths)]
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use scroll::{Pread, Pwrite};
 use tlv_rs::raw_tlv::RawTLV;
